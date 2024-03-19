@@ -1,0 +1,780 @@
+﻿Program.Sub.ScreenSU.Start
+Gui.FormPO..Create(BaseForm)
+Gui.FormPO..Caption("ASM EDI Receiving")
+Gui.FormPO..Size(910,539)
+Gui.FormPO..MinX(0)
+Gui.FormPO..MinY(0)
+Gui.FormPO..Position(0,0)
+Gui.FormPO..AlwaysOnTop(False)
+Gui.FormPO..FontName("Tahoma")
+Gui.FormPO..FontSize(8.25)
+Gui.FormPO..ControlBox(True)
+Gui.FormPO..MaxButton(True)
+Gui.FormPO..MinButton(True)
+Gui.FormPO..MousePointer(0)
+Gui.FormPO..Moveable(True)
+Gui.FormPO..Sizeable(True)
+Gui.FormPO..ShowInTaskBar(True)
+Gui.FormPO..TitleBar(True)
+Gui.FormPO..Event(UnLoad,FormPO_UnLoad)
+Gui.FormPO.gsgcPO.Create(GsGridControl)
+Gui.FormPO.gsgcPO.Enabled(True)
+Gui.FormPO.gsgcPO.Visible(True)
+Gui.FormPO.gsgcPO.Zorder(0)
+Gui.FormPO.gsgcPO.Size(883,440)
+Gui.FormPO.gsgcPO.Position(13,56)
+Gui.FormPO.gsgcPO.Anchor(15)
+Gui.FormPO.cmdBrowser.Create(Button)
+Gui.FormPO.cmdBrowser.Enabled(True)
+Gui.FormPO.cmdBrowser.Visible(True)
+Gui.FormPO.cmdBrowser.Zorder(0)
+Gui.FormPO.cmdBrowser.Size(75,23)
+Gui.FormPO.cmdBrowser.Position(13,16)
+Gui.FormPO.cmdBrowser.Caption("")
+Gui.FormPO.cmdBrowser.FontName("Tahoma")
+Gui.FormPO.cmdBrowser.FontSize(8.25)
+Gui.FormPO.cmdBrowser.Event(Click,cmdBrowser_Click)
+Gui.FormPO.cmdBrowser.SvgPicture("icon_browser_color")
+Gui.FormPO.cmdBrowser.ImageAlign(8)
+Gui.FormPO.cmdProcess.Create(Button)
+Gui.FormPO.cmdProcess.Enabled(True)
+Gui.FormPO.cmdProcess.Visible(True)
+Gui.FormPO.cmdProcess.Zorder(0)
+Gui.FormPO.cmdProcess.Size(75,23)
+Gui.FormPO.cmdProcess.Position(821,16)
+Gui.FormPO.cmdProcess.Caption("Process")
+Gui.FormPO.cmdProcess.FontName("Tahoma")
+Gui.FormPO.cmdProcess.FontSize(8.25)
+Gui.FormPO.cmdProcess.Event(Click,cmdProcess_Click)
+Gui.FormPO.cmdProcess.Anchor(9)
+Gui.FormPO.lbl1.Create(Label,"PO#",True,24,13,0,166,22,True,0,"Tahoma",8.25,,0,0)
+Gui.FormPO.lbl1.BorderStyle(0)
+Gui.FormPO.lbl1.FontStyle(True,False,False,False,False)
+Gui.FormPO.lbl2.Create(Label,"Vendor",True,40,13,0,346,22,True,0,"Tahoma",8.25,,0,0)
+Gui.FormPO.lbl2.BorderStyle(0)
+Gui.FormPO.lbl2.FontStyle(True,False,False,False,False)
+Gui.FormPO.lbl2.Anchor(9)
+Gui.FormPO.txtVendor.Create(TextBox,"",True,293,30,0,397,18,False,0,"Tahoma",8.25,,1)
+Gui.FormPO.txtVendor.Anchor(9)
+Gui.FormPO.ddlPO.Create(DropDownList)
+Gui.FormPO.ddlPO.Enabled(False)
+Gui.FormPO.ddlPO.Visible(True)
+Gui.FormPO.ddlPO.Zorder(0)
+Gui.FormPO.ddlPO.Size(130,20)
+Gui.FormPO.ddlPO.Position(204,18)
+Gui.FormPO.ddlPO.FontName("Tahoma")
+Gui.FormPO.ddlPO.FontSize(8)
+Gui.FormPO.ddlPO.Event(Change,ddlPO_Change)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+V.Global.sError.Declare(String)
+V.Global.sPO.Declare(String)
+V.Global.sPackList.Declare(String)
+V.Global.sPath.Declare(String)
+V.Global.sFile.Declare(String)
+V.Global.sPOList.Declare(String)
+V.Global.BValue.Declare(Boolean)
+
+Program.External.Include.Library("6016.lib")
+Program.Sub.Preflight.End
+Program.Sub.Main.Start
+
+'Author: Arturo Almaguer
+'Date: February 23th 2021
+'Customer: VOESTALPINE ROLL FORMING CORP, quote number 13128
+'This program creates a PO receipt by processing a text file
+'This script is launched off a new custom menu item created under Shipping & Receiving > Transactions > ASM EDI Receiving [6643].
+
+Function.Intrinsic.UI.UsePixels ' Allows you to use Pixels instead of Twips throughout
+
+F.Intrinsic.Control.Try
+V.Global.BValue.Set(False)
+
+	'Disabling process button until information gets populated
+	Gui.FormPO.cmdProcess.Enabled(False)
+	
+	'Displaying the form
+	GUI.FormPO.gsgcPO.Visible(False)
+	
+	GUI.FormPO..Show
+		
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.Main.End
+Program.Sub.FormPO_UnLoad.Start
+'Making form invisible
+GUI.FormPO..Visible(False)
+
+'Closes the connection if it is open
+f.Intrinsic.Control.If(v.ODBC.con.exists,=,"1") 	
+    f.ODBC.Connection!Con.Close
+f.Intrinsic.Control.EndIf
+
+'Ending program
+F.Intrinsic.Control.End
+Program.Sub.FormPO_UnLoad.End
+Program.Sub.cmdBrowser_Click.Start
+'This subroutine presents the user with a dialog form to select the txt file they want to process
+
+F.Intrinsic.Control.Try
+
+	V.Local.sFilePath.Declare(String)
+
+	
+	'If the user reselects another file then close the datatable and delete the context menu
+	
+	F.Intrinsic.Control.If(V.DataTable.dtPOFinal.Exists)
+		F.Data.DataTable.Close("dtPOFinal")
+	F.Intrinsic.Control.EndIf
+		
+	
+	'File dialog has been sent to show only .txt files
+'	F.Intrinsic.UI.ShowOpenFileDialog("", "txt|*.txt", V.Local.sFilePath)
+	'George Sandoval 20 July 2022 - Customer now wants to accept .EDI files in addition to .txt
+	F.Intrinsic.UI.ShowOpenFileDialog("", "EDI|*.EDI|txt|*.txt", V.Local.sFilePath)
+	F.Intrinsic.Control.If(V.Local.sFilePath.IsNotCancel)
+		'Calling sub to process selected file
+		F.Intrinsic.Control.CallSub("ReadFile", "FilePath", V.Local.sFilePath)
+		'George Sandoval 22 July 2022 - Set a global path to be used later for moving the file. Did this instead of changing the local.sFilePath to maintain original integrity of the project. Also need to retrieve just the file name from the selected file path.
+		V.Global.sPath.Set(V.Local.sFilePath)
+		F.Intrinsic.File.GetFileNameFromFQN(V.Local.sFilePath,V.Global.sFile)
+	F.Intrinsic.Control.Else
+		
+		'Displaying error message and ending program
+		F.Intrinsic.UI.Msgbox("A text file wasn't selected. Ending program.", "ERROR")
+		f.Intrinsic.Control.CallSub("FormPO_UnLoad")
+		
+	F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.cmdBrowser_Click.End
+Program.Sub.ReadFile.Start
+'This subroutine processes the selected text file by the user
+
+F.Intrinsic.Control.Try
+
+	V.Local.sMessage.Declare(String)
+	V.Local.iCounter.Declare(Long)
+	V.Local.sTXTString.Declare(String)
+	V.Local.sLine.Declare(String)
+	V.Local.sPart.Declare(String)
+	V.Local.sReturn.Declare(String)
+	
+	'Processing csv file
+	F.Intrinsic.File.File2String(V.Args.FilePath, V.Local.sTXTString)
+	F.Intrinsic.String.Replace(V.Local.sTXTString, "~", V.Ambient.NewLine, V.Local.sTXTString)
+
+	'Creating dt from string
+	F.Data.DataTable.CreateFromString("dtPO", V.Local.sTXTString, "A*!*QTY2*!*C*!*D*!*E*!*UM*!*G*!*H*!*I*!*J*!*SERIAL*!*L*!*M*!*N*!*HEAT*!*P*!*Q", "String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String*!*String", "*", V.Ambient.NewLine)
+
+	'Geting the PO line and part number for each record
+	F.Data.DataTable.AddExpressionColumn("dtPO", "LINE_ID", "String", "IIF(A = 'LIN', QTY2, '')")
+	F.Data.DataTable.AddExpressionColumn("dtPO", "PART_ID", "String", "IIF(A = 'LIN', D, '')")
+	f.Data.DataTable.AddColumn("dtPO", "PO_LINE", "String", "")
+	f.Data.DataTable.AddColumn("dtPO", "PART", "String", "")
+	f.Data.DataTable.AddColumn("dtPO", "RECEIVED_NO", "String", "")
+	
+	'Looping to set PO line and Part values for all lines within same PO line
+	F.Intrinsic.Control.For(v.Local.iCounter, 0, v.DataTable.dtPO.RowCount--, 1)
+		f.Intrinsic.Control.If(V.DataTable.dtPO(v.Local.iCounter).LINE_ID!FieldValTrim, <>, "")
+			V.Local.sLine.Set(V.DataTable.dtPO(v.Local.iCounter).LINE_ID!FieldValTrim)
+			V.Local.sPart.Set(V.DataTable.dtPO(v.Local.iCounter).PART_ID!FieldValTrim)
+		f.Intrinsic.Control.EndIf
+		F.Data.DataTable.SetValue("dtPO", v.Local.iCounter, "PO_LINE", V.Local.sLine)
+		F.Data.DataTable.SetValue("dtPO", v.Local.iCounter, "PART", V.Local.sPart)
+	F.Intrinsic.Control.Next(v.Local.iCounter)
+	
+	'Getting the packlist and PO number from dt
+	f.Data.DataTable.Select("dtPO", "QTY2 = 'PK'", V.Local.sReturn)
+	V.Global.sPackList.Set(V.DataTable.dtPO(V.Local.sReturn.Long).C!FieldValTrim)
+	
+	f.Data.DataTable.Select("dtPO", "E = 'PO'", V.Local.sReturn)
+	V.Global.sPO.Set(V.DataTable.dtPO(V.Local.sReturn.Long).UM!FieldValTrim)
+	
+	'Check if the PO number is a blanket PO number. If it is, have the user select the release order and then continue with that PO number instead of the blanket PO number
+	
+	F.Intrinsic.Control.CallSub("CheckBlanket")
+
+	
+	F.Intrinsic.String.LPad(V.Global.sPO, 0, 7, V.Global.sPO)
+	
+	'Creating final dt and removing all non-relevant columns
+	F.Data.DataView.Create("dtPO", "dvPO", 22, "[A] = 'SLN'", "")
+	f.Data.DataView.ToDataTable("dtPO", "dvPO", "dtPOFinal", True)
+	F.Data.DataView.Close("dtPO", "dvPO")
+	F.Data.DataTable.Close("dtPO")
+	
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "A")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "C")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "D")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "QTY2")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "G")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "H")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "I")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "J")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "L")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "M")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "N")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "P")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "Q")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "LINE_ID")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "PART_ID")
+	
+	'Changing column data type from string to float
+	f.Data.DataTable.AddColumn("dtPOFinal","QTY","Long")
+	'George Sandoval 22 August 2022 - Their quantity on the EDI file is a different column now so adjusting
+	F.Data.DataTable.SetValueFormat("dtPOFinal", -1, "E", "QTY", "##")
+	F.Data.DataTable.RemoveColumn("dtPOFinal", "E")
+	
+	'Creating BIN, LOT and PACKLIST columns
+	f.Data.DataTable.AddColumn("dtPOFinal","BIN","String", "RECV")
+	F.Data.DataTable.AddColumn("dtPOFinal","LOT","Long")
+	F.Data.DataTable.AddColumn("dtPOFinal","PK","String", V.Global.sPackList)
+	
+	'Calling subroutines
+	F.Intrinsic.Control.CallSub("LotValidation")
+	F.Intrinsic.Control.CallSub("CallDictionaries")
+	F.Intrinsic.Control.CallSub("GetVendorData")
+	F.Intrinsic.Control.CallSub("LoadGrid")
+	F.Intrinsic.Control.If(V.Global.BValue,=,False)
+		F.Intrinsic.Control.CallSub("SetContextMenu")
+	F.Intrinsic.Control.EndIf
+	
+	
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.ReadFile.End
+Program.Sub.CatchError.Start
+'To display the error
+F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}", V.Ambient.ScriptPath, V.Ambient.Newline, V.Ambient.SubroutineCalledFrom, V.Ambient.ErrorNumber, V.Ambient.ErrorDescription, V.Ambient.GABVersion, V.Global.sError) 
+F.Intrinsic.UI.Msgbox(V.Global.sError)
+f.Intrinsic.Control.CallSub("FormPO_UnLoad")
+Program.Sub.CatchError.End
+Program.Sub.LoadGrid.Start
+'This subroutine formats the grid
+
+F.Intrinsic.Control.Try
+
+	GUI.FormPO.gsgcPO.AddGridviewFromDatatable("gvPO", "dtPOFinal")
+	
+	''General Gridview properties
+	GUI.FormPO.gsgcPO.SetGridviewProperty("gvPO", V.Enum.GridViewPropertyNames!EnableAppearanceOddRow, True)
+	GUI.FormPO.gsgcPO.SetGridviewProperty("gvPO", V.Enum.GridViewPropertyNames!RowAutoHeight, True)
+	GUI.FormPO.gsgcPO.SetGridviewProperty("gvPO", V.Enum.GridViewPropertyNames!ColumnPanelRowHeight, 45)
+	GUI.FormPO.gsgcPO.SetGridviewProperty("gvPO", V.Enum.GridViewPropertyNames!EnableAppearanceFocusedRow, True) 
+	GUI.FormPO.gsgcPO.SetGridviewProperty("gvPO", "OptionsViewColumnAutoWidth", False)
+	
+	''Column properties
+	'Invisible columns
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "LINE_FORMAT", V.Enum.ColumnPropertyNames!Visible, False)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "COST", V.Enum.ColumnPropertyNames!Visible, False)
+	
+	'Formatting captions
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "QTY", V.Enum.ColumnPropertyNames!Caption, "Quantity")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "SERIAL", V.Enum.ColumnPropertyNames!Caption, "Serial")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "HEAT", V.Enum.ColumnPropertyNames!Caption, "Heat")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PO_LINE", V.Enum.ColumnPropertyNames!Caption, "PO Line")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PART", V.Enum.ColumnPropertyNames!Caption, "Part Number")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "DESCRIPTION", V.Enum.ColumnPropertyNames!Caption, "Description")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "TOTAL_COST", V.Enum.ColumnPropertyNames!Caption, "Cost")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "BIN", V.Enum.ColumnPropertyNames!Caption, "Bin")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "LOT", V.Enum.ColumnPropertyNames!Caption, "Lot")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PK", V.Enum.ColumnPropertyNames!Caption, "Packlist")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "UM", V.Enum.ColumnPropertyNames!Caption, "UM")
+	
+	'Formatting headers
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "QTY", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "SERIAL", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "HEAT", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PO_LINE", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PART", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "DESCRIPTION", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "TOTAL_COST", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "BIN", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "LOT", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PK", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "UM", V.Enum.ColumnPropertyNames!HeaderFontBold, True)
+	
+	
+	'Formatting headers allignment
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "QTY", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "SERIAL", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "HEAT", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PO_LINE", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PART", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "DESCRIPTION", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "TOTAL_COST", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "BIN", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "LOT", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PK", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "UM", V.Enum.ColumnPropertyNames!HeaderHAlignment, "Center")
+	
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "LOT", V.Enum.ColumnPropertyNames!CellHAlignment, "Near") 'far, center, near, default
+	
+	'Formatting widths
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "QTY", V.Enum.ColumnPropertyNames!MaxWidth, 100)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "SERIAL", V.Enum.ColumnPropertyNames!MinWidth, 180)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "HEAT", V.Enum.ColumnPropertyNames!MaxWidth, 110)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PO_LINE", V.Enum.ColumnPropertyNames!MaxWidth, 100)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PART", V.Enum.ColumnPropertyNames!MinWidth, 140)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "DESCRIPTION", V.Enum.ColumnPropertyNames!MinWidth, 240)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "TOTAL_COST", V.Enum.ColumnPropertyNames!MaxWidth, 120)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "BIN", V.Enum.ColumnPropertyNames!MaxWidth, 80)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "LOT", V.Enum.ColumnPropertyNames!MaxWidth, 120)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PK", V.Enum.ColumnPropertyNames!MaxWidth, 130)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "UM", V.Enum.ColumnPropertyNames!MaxWidth, 50)
+	
+	'Setting visible indexes
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PO_LINE", V.Enum.ColumnPropertyNames!VisibleIndex, "0")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PART", V.Enum.ColumnPropertyNames!VisibleIndex, "1")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "DESCRIPTION", V.Enum.ColumnPropertyNames!VisibleIndex, "2")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "BIN", V.Enum.ColumnPropertyNames!VisibleIndex, "3")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "LOT", V.Enum.ColumnPropertyNames!VisibleIndex, "4")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "HEAT", V.Enum.ColumnPropertyNames!VisibleIndex, "5")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "SERIAL", V.Enum.ColumnPropertyNames!VisibleIndex, "6")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "PK", V.Enum.ColumnPropertyNames!VisibleIndex, "7")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "QTY", V.Enum.ColumnPropertyNames!VisibleIndex, "8")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "TOTAL_COST", V.Enum.ColumnPropertyNames!VisibleIndex, "9")
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "UM", V.Enum.ColumnPropertyNames!VisibleIndex, "10")
+	
+	'Making BIN column editable
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "BIN", V.Enum.ColumnPropertyNames!AllowEdit, True)
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "BIN", V.Enum.ColumnPropertyNames!ReadOnly, False)
+
+	'Formatting amounts
+	GUI.FormPO.gsgcPO.SetColumnProperty("gvPO", "TOTAL_COST", V.Enum.ColumnPropertyNames!DisplayCustomNumeric, "$#,##0.00")
+	
+	'Displaying gv
+	Gui.FormPO.cmdProcess.Enabled(True)
+	GUI.FormPO.gsgcPO.MainView("gvPO")
+	GUI.FormPO.gsgcPO.Visible(True)
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.LoadGrid.End
+Program.Sub.cmdProcess_Click.Start
+'This subruotine creates the PO receipt
+
+F.Intrinsic.Control.Try
+
+	v.Local.iCounter.Declare(Long)
+	v.Local.sLine.Declare(String)
+	v.Local.sReturn.Declare(String)
+	v.Local.sProcessed.Declare(String)
+	v.Local.sSql.Declare(String)
+	v.Local.sPart.Declare(String)
+	v.Local.sBin.Declare(String)
+	v.Local.sMessage.Declare(String)
+	v.Local.fNumber.Declare(Float)
+	
+	'Looping through all dt records to add row to callwrapper's dt
+	F.Intrinsic.Control.For(v.Local.iCounter, 0, V.DataTable.dtPOFinal.RowCount--, 1)
+			
+			'George Sandoval 15 Sep 2022 - Check if the bin actually exists for this part. This query is not 100% accurate and may need to be updated in the future. They requested it to be exactly like this at this point in time.
+			F.ODBC.Connection!con.OpenCompanyConnection
+			F.Intrinsic.String.Build("Select top 1 BIN from BIN_MASTER where BIN = '{0}'",V.DataTable.dtPOFinal(V.Local.iCounter).BIN!FieldValTrim,V.Local.sSql)
+			F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql,V.Local.sSql)
+			'Make sure the query returns something and also make an exception for blank bins.
+			F.Intrinsic.Control.If(V.Local.sSql,<>,"",OR,V.DataTable.dtPOFinal(V.Local.iCounter).BIN!FieldValTrim,=,"")
+				
+				V.Local.sLine.Set(V.DataTable.dtPOFinal(v.Local.iCounter).PO_LINE!FieldValTrim)
+				F.Intrinsic.String.LPad(V.Local.sLine, "0", 3, V.Local.sLine)
+				
+				'Using callwrapper 6016's library to create PO receipt
+				F.Data.DataTable.AddRow("6016","PO", V.Global.sPO, "Line", V.Local.sLine, "Bin", V.DataTable.dtPOFinal(v.Local.iCounter).BIN!FieldValTrim, "Lot", V.DataTable.dtPOFinal(v.Local.iCounter).LOT!FieldVal, "Heat", V.DataTable.dtPOFinal(v.Local.iCounter).HEAT!FieldValTrim, "Serial", V.DataTable.dtPOFinal(v.Local.iCounter).SERIAL!FieldValTrim, "RcvdDate", V.Ambient.Date.FormatYYMMDD, "Qty", V.DataTable.dtPOFinal(v.Local.iCounter).QTY!FieldVal, "Price", V.DataTable.dtPOFinal(v.Local.iCounter).TOTAL_COST!FieldVal, "Closed", "N", "PackList", V.Global.sPackList)
+			
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("Invalid Bin '{0}' entered for Part '{1}' and Serial '{2}'.",V.DataTable.dtPOFinal(V.Local.iCounter).BIN!FieldValTrim,V.DataTable.dtPOFinal(V.Local.iCounter).PART!FieldValTrim,V.DataTable.dtPOFinal(V.Local.iCounter).SERIAL!FieldValTrim,V.Local.sMessage)
+				f.Intrinsic.UI.Msgbox(V.Local.sMessage,"Bin Location Error")
+				F.ODBC.Connection!con.Close
+				F.Intrinsic.Control.ExitSub
+				
+			F.Intrinsic.Control.EndIf
+			F.ODBC.Connection!con.Close
+		
+	F.Intrinsic.Control.Next(v.Local.iCounter)
+
+	F.Data.DataView.Create("6016","DvCopy")
+	F.Data.DataView.ToDataTable("6016","DvCopy","DtPrint",True)
+
+	
+	'Calling callwrapper 6016
+	F.Intrinsic.Control.CallSub("6016Sync")
+	
+	'Displaying message box
+	f.Intrinsic.UI.Msgbox("PO Receipt has been successfully uploaded", "ARC 6643 - PO Receipt by File")
+
+
+	'Printing PO Audit Trail
+	F.Intrinsic.Task.LaunchGSSSync("PUR119GI", "", "")
+	
+	'George Sandoval 22 July 2022 - Customer requested that the file be moved to a processed folder after being selected to process. Moving to the \\2173assqlsvr\dts\fromdts\Processed folder(C:\DTS\fromdts\processed)
+	V.Local.sProcessed.Set("\\2173assqlsvr\dts\fromdts\Processed")
+	'Build a string to be used to move the selected file to the desired file location
+	F.Intrinsic.String.Build("{0}\{1}",V.Local.sProcessed,V.Global.sFile,V.Local.sProcessed)
+	F.Intrinsic.File.MoveFile(V.Global.sPath,V.Local.sProcessed,V.Local.sReturn)
+	
+	'George Sandoval 5 August 2022 - Add the ability to print codesoft label after the PO receipt
+	F.Intrinsic.Control.CallSub("PrintLabel")
+	
+	'Ending program
+	f.Intrinsic.Control.CallSub("FormPO_UnLoad")
+	
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.cmdProcess_Click.End
+Program.Sub.GetVendorData.Start
+'This subroutine retrieves vendor information
+
+F.Intrinsic.Control.Try
+
+	V.Local.sSQL.Declare(String)
+	V.Local.sVendor.Declare(String)
+	V.Local.iCheck.Declare(Long)
+	V.Local.iIndex.Declare(Long)
+	
+	'Getting vendor name and ID from PO being processed
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.Intrinsic.String.Build("select RTRIM(A.VENDOR) VENDOR, RTRIM(B.NAME_VENDOR) NAME from V_PO_HEADER A left join V_VENDOR_MASTER B on A.VENDOR = B.VENDOR where A.PURCHASE_ORDER = '{0}';", V.Global.sPO, V.Local.sSQL)
+	F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSQL, V.Local.sVendor)
+	F.ODBC.Connection!Con.Close
+	
+	F.Intrinsic.Control.If(V.Ambient.ExecuteAndReturnEOF, =, False)
+		F.Intrinsic.String.Replace(V.Local.sVendor, "*!*", ", ", V.Local.sVendor)
+	F.Intrinsic.Control.EndIf
+	
+	'Add the PO number to the dropdown list if it does not already exist
+	F.Intrinsic.Control.If(V.Screen.FormPO!ddlPO.Text,=,"")
+		gui.FormPO.ddlPO.AddItem(V.Global.sPO.RTrim)
+		'Set the dropdownlist to the first item added
+		gui.FormPO.ddlPO.ListIndex(0)
+	F.Intrinsic.Control.EndIf
+		
+	GUI.FormPO.txtVendor.Text(V.Local.sVendor)
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+Program.Sub.GetVendorData.End
+Program.Sub.CallDictionaries.Start
+'This subroutine retrieves additional information 
+
+F.Intrinsic.Control.Try
+
+	v.Local.sSQL.Declare(String)
+	v.Local.sDesc.Declare(String)
+	v.Local.fCost.Declare(Float)
+	
+	'Formatting PO line column because it would be used as the key for the dictionaries
+	F.Data.DataTable.AddExpressionColumn("dtPOFinal", "LINE_FORMAT", "String", "iif(len(PO_LINE) > 1, PO_LINE + 0 , 0 + PO_LINE + 0)")
+	
+	'Getting part's description based on PO line
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.Intrinsic.String.Build("select RIGHT(RECORD_NO, 3), RTRIM(DESCRIPTION) DESCRIPTION from V_PO_LINES where PURCHASE_ORDER = '{0}';", V.Global.sPO, V.Local.sSQL)
+	F.Data.Dictionary.CreateFromSQL("dictDesc", "Con", V.Local.sSQL)
+	F.Data.Dictionary.SetDefaultReturn("dictDesc", "")
+	f.Data.DataTable.AddColumn("dtPOFinal", "DESCRIPTION", "String")
+	F.Data.DataTable.FillFromDictionary("dtPOFinal", "dictDesc", "LINE_FORMAT", "DESCRIPTION")
+	F.Data.Dictionary.Close("dictDesc")
+	
+	'Getting line cost based on PO line
+	F.Intrinsic.String.Build("select RIGHT(RECORD_NO, 3), COST from V_PO_LINES where PURCHASE_ORDER = '{0}';", V.Global.sPO, V.Local.sSQL)
+	F.Data.Dictionary.CreateFromSQL("dictCost", "Con", V.Local.sSQL)
+	F.Data.Dictionary.SetDefaultReturn("dictCost", 0.0)
+	f.Data.DataTable.AddColumn("dtPOFinal", "COST", "Float")
+	F.Data.DataTable.FillFromDictionary("dtPOFinal", "dictCost", "LINE_FORMAT", "COST")
+	F.Data.Dictionary.Close("dictCost")
+	
+	'Adding total cost column
+	F.Data.DataTable.AddExpressionColumn("dtPOFinal", "TOTAL_COST", "Float", "[QTY] * [COST]")
+	
+	F.ODBC.Connection!Con.Close
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+Program.Sub.CallDictionaries.End
+Program.Sub.LotValidation.Start
+'This subroutine retrieves the last lot number and creates lot numbers for all records in text file
+
+F.Intrinsic.Control.Try
+	
+	v.Local.iLastLot.Declare(Long)
+	v.Local.iLotNumber.Declare(Long)
+	v.Local.sLine.Declare(String)
+	v.Local.sSQL.Declare(String)
+	v.Local.iCounter.Declare(Long)
+	v.Local.sLastLot.Declare(String)
+	v.Local.iReturn.Declare(Long)
+	
+	'Checking if 'Auto Number Lots in Receipts and WIP to FG' option is turned on
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.ODBC.Connection!Con.ExecuteAndReturn("select F_BOOLEAN from OP_HEADER where ID = '400561' and SEQUENCE = '0000';", V.Local.iReturn)
+	F.Intrinsic.Control.If(V.Local.iReturn, =, 1)
+		
+		'Getting last lot number
+		F.ODBC.Connection!Con.ExecuteAndReturn("select F_LONG from OP_HEADER where ID = '400561' and SEQUENCE = '0001';", V.Local.iLastLot)
+		
+		'Creating new dt with all PO lines in processed file
+		F.Data.DataView.Create("dtPOFinal", "dvPOFinal", 22, "","")	
+		F.Data.DataView.ToDataTableDistinct("dtPOFinal", "dvPOFinal","dtUniquePOLines", "PO_LINE", True)
+		f.Data.DataView.Close("dtPOFinal", "dvPOFinal")
+		
+		'Looping through dt to build lot number
+		F.Intrinsic.Control.For(V.Local.iCounter, 0, V.DataTable.dtUniquePOLines.RowCount--, 1) 
+			
+			F.Intrinsic.Math.Add(V.Local.iLastLot, 1, V.Local.iLastLot)
+			F.Intrinsic.String.Build("{0}001", V.Local.iLastLot, V.Local.sLastLot)
+			V.Local.iLotNumber.Set(V.Local.sLastLot.Long)
+			V.Local.sLine.Set(V.DataTable.dtUniquePOLines(V.Local.iCounter).PO_LINE!FieldValTrim)
+			F.Intrinsic.String.Build("[PO_LINE] = '{0}'", V.Local.sLine, V.Local.sSQL)
+			F.Data.DataView.Create("dtPOFinal", "dvPOFinal", 22, V.Local.sSQL,"")
+			F.Data.DataView.SetSeries("dtPOFinal", "dvPOFinal", "LOT", V.Local.iLotNumber, 1)
+			f.Data.DataView.Close("dtPOFinal", "dvPOFinal")
+			
+		f.Intrinsic.Control.Next(V.Local.iCounter)
+		F.Data.DataTable.Close("dtUniquePOLines")
+		
+		'Updating option value in DB
+		F.Intrinsic.String.Build("update OP_HEADER set F_LONG = '{0}' where ID = '400561' and SEQUENCE = '0001';", V.Local.iLastLot, V.Local.sSQL)
+		F.ODBC.Connection!Con.Execute(V.Local.sSQL)
+
+	F.Intrinsic.Control.Else
+		
+		'Autolot option is not turned on, displaying message box
+		f.Intrinsic.UI.Msgbox("'Auto Number Lots in Receipts and WIP to FG' option is turned off. Ending program.", "ARC 6643 - PO Receipt by File")
+		f.Intrinsic.Control.CallSub("FormPO_UnLoad")
+	
+	F.Intrinsic.Control.EndIf
+	F.ODBC.Connection!Con.Close
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+Program.Sub.LotValidation.End
+Program.Sub.SetContextMenu.Start
+'Creates the context menu and its items
+V.Global.BValue.Set(True)
+F.Intrinsic.Control.Try
+	
+	GUI.FormPO..ContextMenuCreate("ctxgsgcPO")
+	GUI.FormPO.gsgcPO.ContextMenuAttach("ctxgsgcPO")
+	GUI.FormPO..ContextMenuAddItem("ctxgsgcPO","ApplyAll",0,"Apply All")
+
+	GUI.FormPO..ContextMenuSetItemEventHandler("ctxgsgcPO","ApplyAll","MenuClickAA")
+
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+Program.Sub.SetContextMenu.End
+Program.Sub.MenuClickAA.Start
+'Apply new BIN location to all records
+v.Local.sNewBin.Declare(String)
+
+F.Intrinsic.Control.Try
+	
+	V.Local.sNewBin.Set(V.DataTable.dtPOFinal(0).BIN!FieldValTrim)
+	F.Data.DataTable.SetValue("dtPOFinal", -1,"BIN", V.Local.sNewBin)
+		
+F.Intrinsic.Control.Catch
+
+	F.Intrinsic.Control.CallSub(CatchError)
+	
+F.Intrinsic.Control.EndTry
+Program.Sub.MenuClickAA.End
+Program.Sub.CheckBlanket.Start
+'This subroutine was added as a custom VT to handle blanket POs and allow the user to select the release order from the dropdown to replace the blanket PO number
+V.Local.sSql.Declare(String)
+V.Local.sPO.Declare(String)
+'V.Args.sPO.Declare(String)
+
+
+F.Intrinsic.String.Build("Select distinct RELEASE_NO from PO_BLANKET where BLNK_NO LIKE  '%{0}%'",v.Global.sPO,V.Local.sSQL)
+F.ODBC.Connection!con.OpenCompanyConnection
+F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSQL, V.Global.sPOList)
+F.ODBC.Connection!Con.Close
+
+'If the query recognizes the PO to be part of a blanket, we will create a dropdown list for the user to overwrite the original PO number and then proceed with processing
+F.Intrinsic.Control.If(V.Ambient.ExecuteAndReturnEOF, =, False)
+'	F.Intrinsic.Control.CallSub("LoadBlanket","Release Orders",V.Local.sPO)
+	F.Intrinsic.Control.CallSub("LoadBlanket")
+F.Intrinsic.Control.EndIf
+
+Program.Sub.CheckBlanket.End
+Program.Sub.LoadBlanket.Start
+V.Local.sSql.Declare(String)
+V.Local.sSplit.Declare(String)
+V.Local.sPO.Declare(String)
+V.Local.iCnt.Declare(String)
+
+'F.Intrinsic.String.Split(V.Args.sPO,"*!*",v.Local.sSplit)
+F.Intrinsic.String.Split(V.Global.sPOList,"#$#",v.Local.sSplit)
+'Add the release order numbers to the dropdown list
+
+F.Intrinsic.Control.For(V.Local.iCnt,0,V.Local.sSplit.UBound,1)
+	gui.FormPO.ddlPO.AddItem(V.Local.sSplit(V.Local.iCnt),V.Local.iCnt)
+F.Intrinsic.Control.Next(V.Local.iCnt)
+
+'Unfreeze the dropdown list for the user to select a release order for the blanket PO
+gui.FormPO.ddlPO.Enabled(True)
+
+Program.Sub.LoadBlanket.End
+Program.Sub.ddlPO_Change.Start
+'If the DDL value changes, we have to reload the part and the lot according to the new PO number selected (release number) and repopulate the grid.
+V.Global.sPO.Set(V.Screen.FormPO!ddlPO.Text)
+
+'F.Intrinsic.Control.If(V.DataTable.dtPO.Exists)
+F.Intrinsic.Control.If(V.Screen.FormPO!gsgcPO.Visible,=,True)
+
+	'Also adjust part number in the datatable if it has changed for a blanket PO
+	F.Intrinsic.Control.CallSub("UpdatePart")
+F.Intrinsic.Control.EndIf
+
+Program.Sub.ddlPO_Change.End
+Program.Sub.UpdatePart.Start
+V.Local.sSql.Declare(String)
+V.Local.iRow.Declare(Long)
+V.Local.iFinal.Declare(Long)
+V.Local.iStep.Declare(Long)
+V.Local.iColumn.Declare(Long)
+V.Local.sPOLine.Declare(String)
+
+'Freeze the grid and hide it while we update it
+Gui.FormPO.gsgcPO.Visible(False)
+Gui.FormPO.gsgcPO.SuspendLayout
+
+
+'Get the PO lines from the gridview so we can loop through and update the part accordingly
+
+Gui.FormPO.gsgcPO.GetRowCount("gvPO",V.Local.iRow)
+F.Intrinsic.Math.Add(V.Local.iRow,-1,V.Local.iFinal)
+
+
+
+F.Intrinsic.Control.For(V.Local.iStep,0,V.Local.iFinal,1)
+
+	'Get the PO Line value for this row
+	Gui.FormPO.gsgcPO.GetCellValueByColumnName("gvPO","PO_LINE",V.Local.iStep,V.Local.sPOLine)
+	Gui.FormPO.gsgcPO.GetColumnIndexByName("gvPO","PART",V.Local.iColumn)
+	F.Intrinsic.String.LPad(V.Local.sPOLine,"0",3,V.Local.sPOLine)
+	F.Intrinsic.String.RPad(V.Local.sPOLine,"0",4,V.Local.sPOLine)
+	
+	F.Intrinsic.Control.If(V.Local.sPOLine,=,"")
+		'Manually set the po line to line 1 if no line is passed
+		V.Local.sPOLine.Set("0010")
+	F.Intrinsic.Control.EndIf
+	
+	'Retrieve the part to update with the blanket PO number
+	F.Intrinsic.String.Build("select top 1 PART from PO_LINES WHERE PURCHASE_ORDER = '{0}' and RECORD_NO = '{1}'",V.Global.sPO,V.Local.sPOLine,V.Local.sSql)
+'	F.Data.DataTable.CreateFromSQL("dtPart","Con",V.Local.sSql,True)
+	F.ODBC.Connection!con.OpenCompanyConnection
+		f.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql,V.Local.sSql)
+	F.ODBC.Connection!con.Close
+	
+	'Now update the grid and the dtPOFinal datatable with the new part
+	Gui.FormPO.gsgcPO.SetCellValue("gvPO",V.Local.iColumn,V.Local.iStep,V.Local.sSql.RTrim)
+	
+F.Intrinsic.Control.Next(V.Local.iStep)
+
+'Resume the grid layout and display once we are done loading the new parts
+Gui.FormPO.gsgcPO.Visible(True)
+Gui.FormPO.gsgcPO.ResumeLayout
+
+
+Program.Sub.UpdatePart.End
+Program.Sub.PrintLabel.Start
+V.Local.iBIRunID.Declare(Long)
+V.Local.iRptID.Declare(Long)
+V.Local.iLogID.Declare(Long)
+V.Local.sReportFile.Declare(String)
+V.Local.sReportLabel.Declare(String)
+V.Local.sReportExtrusion.Declare(String)
+V.Local.sPrinter.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sReceiver.Declare(String)
+
+'Set the printer name. May need to hard code if there is no easy way to obtain the correct one
+'V.Local.sPrinter.Set(V.Printer.DefaultPrinter)
+V.Local.sPrinter.Set("")
+F.Global.BI.GetRunID(v.Local.iBIRunID)
+
+'George Sandoval 14 Oct 2022 - Retrieve the receiver number from the PO receipt transaction that was just done
+
+F.ODBC.Connection!con.OpenCompanyConnection
+F.Intrinsic.String.Build("select TOP 1 RECEIVER_NO from PO_RECEIVER where PURCHASE_ORDER = '{0}' order by RECEIVER_NO DESC",V.Global.sPO,V.Local.sSQL)
+F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql,V.Local.sReceiver)
+F.ODBC.Connection!con.Close
+
+F.Data.Linq.Join("InnerJoin","datatable","dtPOFinal*!*A","datatable","DtPrint*!*B","A.Serial=B.Serial","A.PART*!*A.DESCRIPTION*!*A.SERIAL*!*A.HEAT*!*A.PO_LINE*!*A.QTY*!*A.BIN*!*A.LOT*!*A.PK*!*A.LINE_FORMAT*!*A.UM*!*B.PO*!*B.RECEIVER","","","","dtPrintFinal",True)
+
+'Add columns with label printing names
+F.Data.DataTable.AddExpressionColumn("DtPrintFinal","QTY_ON_LABEL","Long","Qty")
+F.Data.DataTable.AddExpressionColumn("DtPrintFinal","DESCR","String","DESCRIPTION")
+F.Data.DataTable.AddExpressionColumn("DtPrintFinal","INV_UM","String","UM")
+F.Data.DataTable.AddColumn("DtPrintFinal","RECEIVED_NO","String",V.Local.sReceiver)
+F.Data.DataTable.AddColumn("DtPrintFinal","USER_ID","String",V.Caller.User.String)
+F.Data.DataTable.AddColumn("DtPrintFinal","FG_PART","String")
+F.Data.DataTable.AddColumn("DtPrintFinal","OLD_ERP","String")
+
+F.ODBC.Connection!con.OpenCompanyConnection
+
+F.Data.Dictionary.CreateFromSQL("DictERP","Con","Select rtrim(PART)PART, DESCRIPTION_2 FROM V_INVENTORY_MST2")
+F.Data.Dictionary.SetDefaultReturn("DictERP","")
+F.Data.DataTable.FillFromDictionary("DtPrintFinal","DictERP","PART","OLD_ERP")
+F.Data.Dictionary.Close("DictERP")
+
+F.Data.Dictionary.CreateFromSQL("DictWhereUsed","Con","Select rtrim(PART_WC_OUTSIDE)PART_WC_OUTSIDE, ROUTER FROM ROUTER_LINE where ROUTER LIKE '%SU%'")
+F.Data.Dictionary.SetDefaultReturn("DictWhereUsed","")
+F.Data.DataTable.FillFromDictionary("DtPrintFinal","DictWhereUsed","PART","FG_PART")
+F.Data.Dictionary.Close("DictWhereUsed")
+
+F.ODBC.Connection!con.Close
+
+'File path to the PO receipts label that prints at the end
+F.Intrinsic.String.Build("{0}\Labels\Custom\RFC_PU_PO_Receipt_2818_6643.lab",v.Caller.BusintDir,v.Local.sReportLabel)
+
+'Print the label
+F.Global.BI.InitializeReport("RFC_PU_PO_Receipt_2818_6643",v.Local.sReportLabel,v.Local.iRptID)
+F.Global.BI.StartLogging(v.Local.iBIRunID,v.Local.iRptID,0,"RFC_PU_PO_Receipt_2818_6643",v.Local.iLogID)
+F.Global.BI.StopLogging(v.Local.iLogID)
+F.Global.BI.PrintCodeSoftLabelFromDatatable(v.Local.iBIRunID,v.Local.iLogID,"DtPrintFinal",V.Local.sPrinter,True,"RFC_PU_PO_Receipt_2818_6643",False)
+
+F.Data.DataTable.Close("DtPrint")
+F.Data.DataTable.Close("DtPrintFinal")
+Program.Sub.PrintLabel.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$gsandoval$}$20230113114323392$}$pxyipsmdqasyAY7lJ5+YqAibKN4I37/YudkzCwm6ngRQBxWS3RdrW+oNL8VvXTNBFIPjUExvn35l8Q5q3qqgBQ==
+Program.Sub.Comments.End
